@@ -3,6 +3,10 @@
 #include <string.h>
 #include <iostream>
 
+#define TCP_PORT 17878
+
+
+
 // 注册请求的数据格式
 //
 // 1. 昵称
