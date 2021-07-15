@@ -3,8 +3,13 @@
 #include <string.h>
 #include <iostream>
 
-#define TCP_PORT 17878
+#include <json/json.h>
 
+using namespace std;
+#define TCP_PORT 17878
+#define UDP_PORT 17878
+
+#define UDP_MAX_DATA_LEN 10240
 
 
 // 注册请求的数据格式
@@ -59,7 +64,8 @@ enum Status
     REGISTER_FAILED = 0,
     REGISTER_SUCCESS,
     LOGIN_FAILED,
-    LOGIN_SUCCESS
+    LOGIN_SUCCESS,
+    ONLINE
 };
 
 struct RelpyInfo
@@ -78,4 +84,46 @@ enum TesqType
 {
     REGISTER_RESQ = 0,
     LOGIN_RESQ
+};
+
+// 双方约定UDP数据格式
+class UdpMsg
+{
+    public:
+        UdpMsg()
+        {
+
+        }
+
+        ~UdpMsg()
+        {
+
+        }
+
+        // 序列化接口，就是将对象转化成为二进制的过程
+        // 为了将二进制通过网络接口传输到对端
+        void serialize(string msg)
+        {
+            Json::Reader reader;
+            Json::Value val;
+            reader.parse(msg, val);
+
+            nick_name_ = val["nick_name_"].asString();
+            school_ = val["school"].asString();
+            user_id_ = val["user_id"].asUInt();
+            msg_ = val["msg"].asString();
+        }
+
+        // 反序列化接口，就是将二进制转化成为对象的过程
+        // 为了将从网络当中接收的数据，反序列化成为我们认识的字符串
+        void deserialize(string msg)
+        {
+
+        }
+        
+    public:
+        string nick_name_;
+        string school_;
+        string user_id_;
+        string msg_;
 };

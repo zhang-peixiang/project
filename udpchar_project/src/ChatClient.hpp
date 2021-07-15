@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include "ConnectInfo.hpp"
 #include "tools.hpp"
@@ -87,9 +88,11 @@ class UdpClient
             cout<<"please enter nick_name: ";
             fflush(stdout);
             cin >> ri.nick_name_;
+            me_.nick_name_ = ri.nick_name_;
             cout << "please enter school: ";
             fflush(stdout);
             cin >> ri.school_;
+            me_.school_ = ri.school_;
             // 对于密码字段，我们需要进行一个双重校验，防止用户在输入密码的时候，“手心”不一致
             while(1)
             {
@@ -105,6 +108,7 @@ class UdpClient
                 if(first_passwd == second_passwd)
                 {
                     strncpy(ri.passwd_, first_passwd.c_str(),sizeof(ri.passwd_));
+                    me_.passwd_ = first_passwd;
                     break;
                 }
             }
@@ -127,6 +131,8 @@ class UdpClient
             else if(recv_size == 0)
             {
                 LOG(ERROR, "udpchat server shutdown connect")<<endl;
+                CloseFd();
+                return -1;
             }
             // 判断应答结果
             if(reply_info.resp_status_ == REGISTER_FAILED)
@@ -136,9 +142,81 @@ class UdpClient
             }
             // 返回给上层调用者注册的结果
             LOG(INFO, "register success")<<endl;
+            me_.user_id = reply_info.id_;
             return 0;
+        }
+
+        int LoginToSvr(string& ip)
+        {
+            // 创建套接字
+            int ret = CreateSock();
+            if(ret < 0)
+            {
+                return -1;
+            }
+            // 连接服务端
+            ret = ConnectoSvr(ip);
+            if(ret < 0)
+            {
+                return -1;
+            }
+            // 发送类型
+            char type = LOGIN_RESQ;
+            ssize_t send_size = send(tcp_sock_, &type, 1, 0);
+
+            if(send_size <0 )
+            {
+                LOG(ERROR,"send login packet failed")<<endl;
+                return -1;
+            }
+
+            // 发送登陆包
+            struct LoginInfo ri;
+            ri.id_ = me_.user_id;
+            strncpy(ri.passwd_, me_.passwd_.c_str(),sizeof(ri.passwd_));
+            send_size = send(tcp_sock_, &ri, sizeof(ri), 0);
+            if(send_size<0)
+            {
+                LOG(ERROR, "senf login packet failed")<<endl;
+                return -1;
+            }
+
+            // 接收应答
+            struct RelpyInfo reply_info;
+            ssize_t recv_size = recv(tcp_sock_, &reply_info, sizeof(reply_info), 0);
+            if(recv_size < 0)
+            {
+                LOG(ERROR, "recv failed")<<endl;
+                return -1;
+            }
+            else if(recv_size == 0)
+            {
+                CloseFd();
+                LOG(ERROR, "server shutdown connect")<<endl;
+                return -1;
+            }
+
+            // 分析应答数据
+            if(reply_info.resp_status_ != LOGIN_SUCCESS)
+            {
+                LOG(ERROR, "recv status not LOGIN_SUCCESS")<<endl;
+                return -1;
+            }
+            LOG(INFO, "login success")<<endl;
+            return 0;
+
+        }
+
+        void CloseFd()
+        {
+            if(tcp_sock_ > 0)
+            {
+                close(tcp_sock_);
+                tcp_sock_ = -1;
+            }
         }
     private:
         int tcp_sock_;
 
+        MySelf me_;
 };

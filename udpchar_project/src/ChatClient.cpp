@@ -1,6 +1,13 @@
 #include <unistd.h>
 #include "ChatClient.hpp"
 
+void Menu()
+{
+    cout<<"*******************************"<<endl;
+    cout<<"*****1. register *** 2. login**"<<endl;
+    cout<<"*****3. logout   *** 4. exit***"<<endl;
+    cout<<"*******************************"<<endl;
+}
 int main(int argc, char* argv[])
 {
     if(argc != 3)
@@ -24,8 +31,58 @@ int main(int argc, char* argv[])
         LOG(ERROR, "Illegal IP, please retry start ChatClent")<<endl;
     }
 
+
     UdpClient uc;
-    uc.RegistertoSvr(ip);
+
+    while(1)
+    {
+        Menu();
+        int select = -1;
+        cout << "please  enter your select: ";
+        fflush(stdout);
+
+        cin >> select;
+        if(select == 1)
+        {
+            // 注册
+            int ret = uc.RegistertoSvr(ip);
+            if(ret < 0)
+            {
+                LOG(WARNING, "please retry register")<<endl;
+            }
+            else if(ret == 0)
+            {
+                LOG(INFO, "register success ! please login...")<<endl;
+            }
+            uc.CloseFd();
+        }
+        else if(select == 2)
+        {
+            // 登录
+            int ret = uc.LoginToSvr(ip);
+            if(ret < 0)
+            {
+                LOG(ERROR, "please retry login")<<endl;
+            }
+            else if(ret == 0)
+            {
+                LOG(INFO, "login success, please chatting...")<<endl;
+            }
+            
+        }
+        else if(select == 3)
+        {
+            // 登出
+        }
+        else if(select == 4)
+        {
+            //退出
+            LOG(INFO,"exit chat client")<<endl;
+            exit(0);
+        }
+
+    }
+
 
     while(1)
     {

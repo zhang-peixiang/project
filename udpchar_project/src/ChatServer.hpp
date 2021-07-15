@@ -12,10 +12,10 @@ using namespace std;
 #include "ConnectInfo.hpp"
 #include "tools.hpp"
 #include "UserManager.hpp"
+#include "MessagePool.hpp"
 
-#define TCP_PORT 17878
 #define MAX_ROUND_COUNT 10
-
+#define THREAD_COUNT 1
 
 class TcpConnect
 {
@@ -66,19 +66,50 @@ class ChatServer
             tcp_sock_ = -1;
             udp_sock_ = -1;
             tcp_port_ = TCP_PORT;
+            udp_port_ = UDP_PORT;
 
             user_manager_ = NULL;
+            memset(con_tid_,'\0',THREAD_COUNT*sizeof(pthread_t));
+            memset(pro_tid_,'\0',THREAD_COUNT*sizeof(pthread_t));
+
+            msg_pool_ = NULL;
+
+            udp_msg = NULL;
         }
 
         ~ChatServer()
         {
+            if(user_manager_)
+            {
+                delete user_manager_;
+                user_manager_ = NULL;
+            }
 
+            if(msg_pool_)
+            {
+                delete msg_pool_;
+                msg_pool_ =NULL;
+            }
+
+            if(udp_msg_)
+            {
+                delete udp_msg_;
+                udp_msg_ = NULL;
+            }
         }
 
         // 初始化变量的接口，被调用者调用
         // 用户管理模块的实例化对象，消息池的实例化对象
         int InitSvr(uint16_t tcp_port = TCP_PORT)
         {
+            // 创建消息池
+            msg_pool_ = new MsgPool(1024);
+            if(msg_pool_ == NULL)
+            {
+                LOG(ERROR, "init msgpool failed")<<endl;
+            }
+
+
             // 1. 创建tcp_socket，并且绑定地址信息，监听
             // 注册+登陆
             tcp_sock_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -113,8 +144,13 @@ class ChatServer
                 return -1;
             }
 
-            // 暂时还没有考虑的是udp通信，以及登陆注册模块，消息池的初始化
-
+            // 暂时还没有考虑的是udp通信，消息池的初始化
+            udp_sock_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            if(udp_sock_ < 0)
+            {
+                LOG(ERROR, "create udp socket failed")<<endl;
+                return -1;
+            }
 
 
             return 0;
@@ -134,7 +170,25 @@ class ChatServer
             //
             //   TODO
             //   udp 线程的创建
-            //
+            for(int i = 0; i < THREAD_COUNT;++i)
+            {
+                int ret = pthread_create(&con_tid_[i], NULL, ConsumeStart, (void*) this);
+                if(ret<0)
+                {
+                    LOG(ERROR, "Start udp thread failed")<<endl;
+                    return -1;
+                }
+                ret = pthread_create(&pro_tid_[i], NULL, ProductStart, (void*) this);
+                if(ret < 0)
+                {
+                    LOG(ERROR, "Start udp thread failed")<<endl;
+                    return -1;
+
+                }
+            }
+
+
+
             struct sockaddr_in peer_addr;
             socklen_t peer_addrlen = sizeof(peer_addr);
             while(1)
@@ -163,6 +217,33 @@ class ChatServer
         }
 
     private:
+        static void* ConsumeStart(void* arg)
+        {
+            pthread_detach(pthread_self());
+            ChatServer* cs = (ChatServer*) arg;
+            // 1. 从消息池中获取消息
+            // 2. 推送给所有的在线用户
+            while(1)
+            {
+                cs->SendMsg();
+            }
+        }
+
+        static void* ProductStart(void* arg)
+        {
+            pthread_detach(pthread_self());
+            ChatServer* cs = (ChatServer*) arg;
+            //1. 接收udp数据
+            //2. 将数据发送到消息池当中
+            while(1)
+            {
+                cs->RecvMsg();
+            }
+        }
+
+
+
+
         static void* LoginRegisterStart(void* arg)
         {
             // 1. 分离自己，当线程退出之后，线程所占用的资源就被操作系统回收了
@@ -243,6 +324,7 @@ class ChatServer
             return NULL;
         }
 
+    private:
         // 不管是注册成功了，还是注册失败了，都需要给客户端一个应答
         int DealRegister(int new_sock, uint32_t* user_id)
         {
@@ -303,10 +385,54 @@ class ChatServer
             return LOGIN_SUCCESS;
         }
 
+        int RecvMsg()
+        {
+            // 1. 接收udp数据
+            // 2，判断该用户是否是登陆用户
+            // 3. 判断该用户是否是第一次发送udp数据
+            //     如果是：需要保存该用户的udp地址，并且将该用户放到在线用户列表当中 
+            //     如果不是:说明这个用户就是老用户，之前已经保存过该用户的udp地址信息
+            // 4. 将数据发送到消息池当中
+            
+            char buf[UDP_MAX_DATA_LEN] = {0};
+            ssize_t recv_size = recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, NULL, NULL);
+            if(recv_size < 0)
+            {
+                return -1;
+            }
+
+            UdpMsg um;
+            string msg;
+            msg.assign(buf, strlen(buf));
+            um.deserialize(msg);
+
+
+            // 需要使用user_id和用户管理模块进行验证
+            //     1. 先使用该user_id去map当中查找
+            //     2.需要判断当前用户的状态，保存用户的udp地址信息
+            
+        
+            
+        }
+
+        int SendMsg()
+        {
+
+        }
+
     private:
         int tcp_sock_;
         int udp_sock_;
         uint16_t tcp_port_;
+        uint16_t udp_port_;
 
         UserManager* user_manager_;
+        // UDP线程的标识符数组
+        pthread_t con_tid_[THREAD_COUNT];
+        pthread_t pro_tid_[THREAD_COUNT];
+
+        MsgPool* msg_pool_;
+
+        UdpMsg* udp_msg_;
+
 };

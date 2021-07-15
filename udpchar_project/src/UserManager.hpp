@@ -1,4 +1,8 @@
 #pragma once
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <string.h>
 #include <iostream>
 #include <string>
 #include <unordered_map>
@@ -26,6 +30,12 @@ class UserInfo
             passwd_ = passwd;
 
             user_id_ = user_id;
+
+            user_status_ = REGISTER_FAILED;
+
+            // 新增udp地址信息的初始化
+            memset((void*)& addr_,'\0',sizeof(struct sockaddr_in));
+            addr_len_ = 0;
         }
 
         ~UserInfo()
@@ -38,7 +48,25 @@ class UserInfo
             return passwd_;
         }
 
+        void SetUserStatus(int status)
+        {
+            user_status_ = status;
+        }
 
+        int GetUserStatus()
+        {
+            return user_status_;
+        }
+
+        void SetaddrInfo(struct sockaddr_in addr)
+        {
+            memcpy(&addr_,&addr, sizeof(addr));
+        }
+
+        void SetaddrLenInfo(socklen_t addr_len)
+        {
+            addr_len_ = addr_len;
+        }
     private:
         string nick_name_;
         string school_;
@@ -46,6 +74,13 @@ class UserInfo
 
         // 用户id
         uint32_t user_id_;
+
+        int user_status_;
+
+        //新增udp地址信息
+        struct sockaddr_in addr_;
+        socklen_t addr_len_;
+        
 };
 
 
@@ -66,7 +101,7 @@ class UserManager
 
         // 处理注册请求
         // user_id是出参，返回给调用者
-        int DealRegister(const string& nick_name,const string& school,const  string& passwd, uint32_t* user_id)
+        int DealRegister(const string& nick_name,const string& school,const  string& passwd, uint32_t*  user_id)
         {
             //1.判断密码字段是否为空
             if(nick_name.size()==0 || school.size()==0 || passwd.size()==0)
@@ -78,8 +113,8 @@ class UserManager
             //3.分配用户id
             UserInfo ui(nick_name, school, passwd, prepare_id_);
             *user_id = prepare_id_;
-            // TODO 需要更改当前用户的状态
-            
+            // 需要更改当前用户的状态
+            ui.SetUserStatus(REGISTER_SUCCESS);
 
             //4.将用户的数据插入到map当中
             user_map_.insert(make_pair(prepare_id_,ui));
@@ -122,14 +157,58 @@ class UserManager
         
             if(reg_passwd != passwd)
             {
+                iter->second.SetUserStatus(LOGIN_FAILED);
                 pthread_mutex_unlock(&map_lock_);
                 return -3;
             }
 
             // 密码对比上了
-
+            iter->second.SetUserStatus(LOGIN_SUCCESS);
             pthread_mutex_unlock(&map_lock_);
             return 0;
+        }
+
+        // user_id:用户id
+        // addr： udp客户端的地址信息，为了后面推送消息所保存的
+        // addr_len: udp客户端的地址信息长度
+        int IsLogin(uint32_t user_id, struct sockaddr_in addr, socklen_t addr_len)
+        {
+            // 1.使用use_id去map当中查询，是否存在该用户
+            //  如果存在，则获取用户信息，判断用户状态
+            //  如果不存在，直接返回，刚刚接收的udp数据直接丢弃掉
+            unordered_map<uint32_t, UserInfo>::iterator iter;
+            pthread_mutex_lock(&map_lock_);
+            iter = user_map_.find(user_id);
+            if(iter == user_map_.end())
+            {
+                pthread_mutex_unlock(&map_lock_);
+                return -1;
+            }
+
+            UserInfo ui = iter->second;
+
+            // 2.判断用户状态
+            //   2.1 第一次发送，则我们保存该用户的地址信息
+            //   2.2 如果是第n次发送，则不用添加地址信息
+            if(ui.GetUserStatus()<=LOGIN_FAILED)
+            {
+                pthread_mutex_unlock(&map_lock_);
+                return -1;
+            }
+            if(ui.GetUserStatus() == LOGIN_SUCCESS)
+            {
+                // 第一次发送udp消息（刚刚登陆完成）
+               ui.SetUserStatus(ONLINE);
+               ui.SetaddrInfo(addr);
+               ui.SetaddrLenInfo(addr_len);
+
+                
+            }
+            else
+            {
+                // 第n次发送，老用户
+            }
+
         }
     private:
         // string --id
