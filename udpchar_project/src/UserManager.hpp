@@ -67,6 +67,16 @@ class UserInfo
         {
             addr_len_ = addr_len;
         }
+
+        struct sockaddr_in& GetAddrInfo()
+        {
+            return addr_;
+        }
+
+        socklen_t GetAddrLen()
+        {
+            return addr_len_;
+        }
     private:
         string nick_name_;
         string school_;
@@ -92,6 +102,8 @@ class UserManager
             user_map_.clear();
             pthread_mutex_init(&map_lock_, NULL);
             prepare_id_ = 0;
+
+            Online_user_.clear();
         }
 
         ~UserManager()
@@ -195,20 +207,32 @@ class UserManager
                 pthread_mutex_unlock(&map_lock_);
                 return -1;
             }
-            if(ui.GetUserStatus() == LOGIN_SUCCESS)
+            else if(ui.GetUserStatus() == LOGIN_SUCCESS)
             {
                 // 第一次发送udp消息（刚刚登陆完成）
                ui.SetUserStatus(ONLINE);
                ui.SetaddrInfo(addr);
                ui.SetaddrLenInfo(addr_len);
 
+               // 将用户的信息增加到在线用户列表当中
+               // 本质上视为推送消息到udp客户端做铺垫
+
+               Online_user_.push_back(ui);
                 
             }
-            else
+           /* else
             {
                 // 第n次发送，老用户
             }
+            */
+            pthread_mutex_unlock(&map_lock_);
+            return 0;
 
+        }
+
+        void GetOnlineUser(vector<UserInfo>* vec)
+        {
+            *vec = Online_user_;
         }
     private:
         // string --id
@@ -218,4 +242,7 @@ class UserManager
 
         //预分配的用户id，当用户管理模块接收到注册请求之后，将prepare_id分配给注册的用户，分配完毕之后，需要对prepare_id进行更新
         uint32_t prepare_id_;
+
+        // 保存的都是在线用户
+        vector<UserInfo> Online_user_;
 };

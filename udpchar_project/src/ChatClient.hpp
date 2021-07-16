@@ -14,7 +14,7 @@ struct MySelf
     string nick_name_;
     string school_;
     string passwd_;
-    uint32_t user_id;
+    uint32_t user_id_;
 };
 
 class UdpClient
@@ -23,6 +23,11 @@ class UdpClient
         UdpClient()
         {
             tcp_sock_ = -1;
+            udp_sock_ = socket(AF_INET, SOCK_DGRAM, 0);
+            if(udp_sock_<0)
+            {
+                LOG(ERROR, "create udp socket failed")<<endl;
+            }
         }
         ~UdpClient()
         {
@@ -142,7 +147,7 @@ class UdpClient
             }
             // 返回给上层调用者注册的结果
             LOG(INFO, "register success")<<endl;
-            me_.user_id = reply_info.id_;
+            me_.user_id_ = reply_info.id_;
             return 0;
         }
 
@@ -172,7 +177,7 @@ class UdpClient
 
             // 发送登陆包
             struct LoginInfo ri;
-            ri.id_ = me_.user_id;
+            ri.id_ = me_.user_id_;
             strncpy(ri.passwd_, me_.passwd_.c_str(),sizeof(ri.passwd_));
             send_size = send(tcp_sock_, &ri, sizeof(ri), 0);
             if(send_size<0)
@@ -215,8 +220,51 @@ class UdpClient
                 tcp_sock_ = -1;
             }
         }
+
+        int SendUdpMsg(string& msg, const string& ip)
+        {
+            UdpMsg um;
+            um.nick_name_ = me_.nick_name_;
+            um.school_ = me_.school_;
+            um.user_id_ = me_.user_id_;
+            um.msg_ = msg;
+
+            string str_msg;
+            um.serialize(&str_msg);
+
+            struct sockaddr_in addr;
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(UDP_PORT);
+            addr.sin_addr.s_addr = inet_addr(ip.c_str());
+            
+            size_t send_size = sendto(udp_sock_, str_msg.c_str(), str_msg.size(), 0,(struct sockaddr*)&addr, sizeof(addr));
+            if(send_size < 0)
+            {
+                LOG(ERROR,"send udp msg failed")<<endl;
+            }
+
+            return 0;
+        }
+
+        int RecvUdpMsg()
+        {
+            char buf[UDP_MAX_DATA_LEN] = {0};
+            recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, NULL, NULL);
+
+            UdpMsg um;
+            string msg;
+            msg.assign(buf, strlen(buf));
+            um.deserialize(msg);
+
+            cout << um.nick_name_ << ":" <<um.school_ << endl;
+            cout << um.msg_ << endl;
+
+            return 0;
+        }
     private:
         int tcp_sock_;
 
         MySelf me_;
+
+        int udp_sock_;
 };

@@ -74,7 +74,7 @@ class ChatServer
 
             msg_pool_ = NULL;
 
-            udp_msg = NULL;
+            udp_msg_ = NULL;
         }
 
         ~ChatServer()
@@ -395,9 +395,12 @@ class ChatServer
             // 4. 将数据发送到消息池当中
             
             char buf[UDP_MAX_DATA_LEN] = {0};
-            ssize_t recv_size = recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, NULL, NULL);
+            struct sockaddr_in peer_addr;
+            socklen_t  peer_addr_len = sizeof(peer_addr);
+            ssize_t recv_size = recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, (struct sockaddr*)&peer_addr, &peer_addr_len);
             if(recv_size < 0)
             {
+                LOG(ERROR, "recv udp msg failed");
                 return -1;
             }
 
@@ -406,18 +409,50 @@ class ChatServer
             msg.assign(buf, strlen(buf));
             um.deserialize(msg);
 
-
             // 需要使用user_id和用户管理模块进行验证
             //     1. 先使用该user_id去map当中查找
             //     2.需要判断当前用户的状态，保存用户的udp地址信息
-            
-        
-            
+            if(user_manager_->IsLogin(um.user_id_,peer_addr, peer_addr_len)<0)
+            {
+                return -1;
+
+            }
+
+            // 正常逻辑
+            msg_pool_->PushMsg(msg);
+            return 0;
         }
 
         int SendMsg()
         {
+            //1.从消息池当中获取消息
+            //2.按照在线用户列表推送消息
+            string msg;
+            msg_pool_->PopMsg(&msg);
 
+            vector<UserInfo> vec;
+            user_manager_->GetOnlineUser(&vec);
+
+            for(size_t i = 0; i<vec.size();++i)
+            {
+                // 调用原生的udp发送接口进行发送 
+                SendUdpMsg(msg, vec[i].GetAddrInfo(), vec[i].GetAddrLen());
+            }
+            return 0;
+
+        }
+
+        int SendUdpMsg(const string& msg, struct sockaddr_in addr, socklen_t addr_len)
+        {
+            ssize_t send_size = sendto(udp_sock_, msg.c_str(), msg.size(), 0, (struct sockaddr*)&addr, addr_len);
+            if(send_size < 0)
+            {
+                // 如果推送失败了，要想方设法的再次给客户端推送
+                // 要么缓存消息，专门开辟一个线程，发送这些缓存消息，要么在第一次发送的时候，多尝试几次
+                LOG(ERROR,"send msg failed, msg is")<< msg<<"ip is "<< inet_ntoa(addr.sin_addr)<<"port is "<<ntohs(addr.sin_port)<<endl;
+                return -1;
+            }
+            return 0;
         }
 
     private:

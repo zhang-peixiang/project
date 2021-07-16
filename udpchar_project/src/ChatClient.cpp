@@ -67,6 +67,18 @@ int main(int argc, char* argv[])
             else if(ret == 0)
             {
                 LOG(INFO, "login success, please chatting...")<<endl;
+                while(1)
+                {
+                    string msg;
+                    cout << "please enter your msg: ";
+                    fflush(stdout);
+                    cin >> msg;
+
+                    uc.SendUdpMsg(msg, ip);
+
+
+                    uc.RecvUdpMsg();
+                }
             }
             
         }
