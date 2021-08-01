@@ -5,9 +5,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <unordered_map>
 
 #include "ConnectInfo.hpp"
 #include "tools.hpp"
+#include "UserManager.hpp"
 
 struct MySelf
 {
@@ -20,7 +22,7 @@ struct MySelf
 class UdpClient
 {
     public:
-        UdpClient()
+        UdpClient(const string& ip)
         {
             tcp_sock_ = -1;
             udp_sock_ = socket(AF_INET, SOCK_DGRAM, 0);
@@ -28,6 +30,10 @@ class UdpClient
             {
                 LOG(ERROR, "create udp socket failed")<<endl;
             }
+
+            ip_ = ip;
+
+            vec_.clear();
         }
         ~UdpClient()
         {
@@ -50,24 +56,24 @@ class UdpClient
 
         //ip是服务端的ip地址
         //服务端的ip地址已经约定好了，在ConnectInfo这个文件当中
-        int ConnectoSvr(const string& ip)
+        int ConnectoSvr()
         {
             struct sockaddr_in dest_addr;
             dest_addr.sin_family = AF_INET;
             dest_addr.sin_port = htons(TCP_PORT);
-            dest_addr.sin_addr.s_addr = inet_addr(ip.c_str());
+            dest_addr.sin_addr.s_addr = inet_addr(ip_.c_str());
 
             int ret = connect(tcp_sock_,(struct sockaddr*)&dest_addr,sizeof(dest_addr));
             if(ret < 0)
             {
-                LOG(ERROR,"Connect server failed, addr is ")<<ip<<":"<<TCP_PORT<<endl;
+                LOG(ERROR,"Connect server failed, addr is ")<<ip_<<":"<<TCP_PORT<<endl;
                 return -1;
             }
 
             return 0;
         }
 
-        int RegistertoSvr(const string& ip)
+        int RegistertoSvr()
         {
             // 创建套接字
             int ret = CreateSock();
@@ -76,7 +82,7 @@ class UdpClient
                 return -1;
             }
             // 连接服务端
-            ret = ConnectoSvr(ip);
+            ret = ConnectoSvr();
             if(ret < 0)
             {
                 return -1;
@@ -151,7 +157,7 @@ class UdpClient
             return 0;
         }
 
-        int LoginToSvr(string& ip)
+        int LoginToSvr()
         {
             // 创建套接字
             int ret = CreateSock();
@@ -160,7 +166,7 @@ class UdpClient
                 return -1;
             }
             // 连接服务端
-            ret = ConnectoSvr(ip);
+            ret = ConnectoSvr();
             if(ret < 0)
             {
                 return -1;
@@ -221,23 +227,14 @@ class UdpClient
             }
         }
 
-        int SendUdpMsg(string& msg, const string& ip)
+        int SendUdpMsg(string& msg)
         {
-            UdpMsg um;
-            um.nick_name_ = me_.nick_name_;
-            um.school_ = me_.school_;
-            um.user_id_ = me_.user_id_;
-            um.msg_ = msg;
-
-            string str_msg;
-            um.serialize(&str_msg);
-
             struct sockaddr_in addr;
             addr.sin_family = AF_INET;
             addr.sin_port = htons(UDP_PORT);
-            addr.sin_addr.s_addr = inet_addr(ip.c_str());
+            addr.sin_addr.s_addr = inet_addr(ip_.c_str());
             
-            size_t send_size = sendto(udp_sock_, str_msg.c_str(), str_msg.size(), 0,(struct sockaddr*)&addr, sizeof(addr));
+            size_t send_size = sendto(udp_sock_, msg.c_str(), msg.size(), 0,(struct sockaddr*)&addr, sizeof(addr));
             if(send_size < 0)
             {
                 LOG(ERROR,"send udp msg failed")<<endl;
@@ -246,20 +243,28 @@ class UdpClient
             return 0;
         }
 
-        int RecvUdpMsg()
+        int RecvUdpMsg(string* msg)
         {
             char buf[UDP_MAX_DATA_LEN] = {0};
-            recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, NULL, NULL);
+            ssize_t recv_size = recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, NULL, NULL);
+            if(recv_size < 0)
+            {
+                return -1;
+            }
 
-            UdpMsg um;
-            string msg;
-            msg.assign(buf, strlen(buf));
-            um.deserialize(msg);
-
-            cout << um.nick_name_ << ":" <<um.school_ << endl;
-            cout << um.msg_ << endl;
+            msg->assign(buf, strlen(buf));
 
             return 0;
+        }
+
+        MySelf& GetMe()
+        {
+            return me_;
+        }
+
+        vector<UdpMsg>& GetVec()
+        {
+            return vec_;
         }
     private:
         int tcp_sock_;
@@ -267,4 +272,10 @@ class UdpClient
         MySelf me_;
 
         int udp_sock_;
+
+        string ip_;
+
+        vector<UdpMsg> vec_;
+
+       //unordered_map<uint32_t, UserInfo> map_;
 };

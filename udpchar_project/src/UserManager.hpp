@@ -197,27 +197,26 @@ class UserManager
                 return -1;
             }
 
-            UserInfo ui = iter->second;
 
             // 2.判断用户状态
             //   2.1 第一次发送，则我们保存该用户的地址信息
             //   2.2 如果是第n次发送，则不用添加地址信息
-            if(ui.GetUserStatus()<=LOGIN_FAILED)
+            if(iter->second.GetUserStatus()<=LOGIN_FAILED)
             {
                 pthread_mutex_unlock(&map_lock_);
                 return -1;
             }
-            else if(ui.GetUserStatus() == LOGIN_SUCCESS)
+            else if(iter->second.GetUserStatus() == LOGIN_SUCCESS)
             {
                 // 第一次发送udp消息（刚刚登陆完成）
-               ui.SetUserStatus(ONLINE);
-               ui.SetaddrInfo(addr);
-               ui.SetaddrLenInfo(addr_len);
+               iter->second.SetUserStatus(ONLINE);
+               iter->second.SetaddrInfo(addr);
+               iter->second.SetaddrLenInfo(addr_len);
 
                // 将用户的信息增加到在线用户列表当中
                // 本质上视为推送消息到udp客户端做铺垫
 
-               Online_user_.push_back(ui);
+               Online_user_.push_back(iter->second);
                 
             }
            /* else

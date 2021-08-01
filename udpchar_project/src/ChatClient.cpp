@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include "ChatClient.hpp"
+#include "ChatWindows.hpp"
 
 void Menu()
 {
@@ -32,7 +33,8 @@ int main(int argc, char* argv[])
     }
 
 
-    UdpClient uc;
+    UdpClient* uc = new UdpClient(ip);
+    ChatWindow* cw = new ChatWindow();
 
     while(1)
     {
@@ -45,7 +47,7 @@ int main(int argc, char* argv[])
         if(select == 1)
         {
             // 注册
-            int ret = uc.RegistertoSvr(ip);
+            int ret = uc->RegistertoSvr();
             if(ret < 0)
             {
                 LOG(WARNING, "please retry register")<<endl;
@@ -54,12 +56,12 @@ int main(int argc, char* argv[])
             {
                 LOG(INFO, "register success ! please login...")<<endl;
             }
-            uc.CloseFd();
+            uc->CloseFd();
         }
         else if(select == 2)
         {
             // 登录
-            int ret = uc.LoginToSvr(ip);
+            int ret = uc->LoginToSvr();
             if(ret < 0)
             {
                 LOG(ERROR, "please retry login")<<endl;
@@ -67,18 +69,8 @@ int main(int argc, char* argv[])
             else if(ret == 0)
             {
                 LOG(INFO, "login success, please chatting...")<<endl;
-                while(1)
-                {
-                    string msg;
-                    cout << "please enter your msg: ";
-                    fflush(stdout);
-                    cin >> msg;
 
-                    uc.SendUdpMsg(msg, ip);
-
-
-                    uc.RecvUdpMsg();
-                }
+                cw->start(uc);
             }
             
         }

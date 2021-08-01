@@ -152,7 +152,15 @@ class ChatServer
                 return -1;
             }
 
+            ret = bind(udp_sock_, (struct sockaddr*)&addr, sizeof(addr));
+            if(ret < 0)
+            {
+                LOG(ERROR, "bind udp port failed") << endl;
+                return -2;
+            }
 
+            LOG(INFO, "udp bind port is") << UDP_PORT << endl;
+            LOG(INFO, " Server init success...")<<endl;
             return 0;
         }
 
